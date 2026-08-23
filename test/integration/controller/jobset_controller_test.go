@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -3060,6 +3061,73 @@ var _ = ginkgo.Describe("JobSet controller", func() {
 				}
 				return !fresh1.DeletionTimestamp.IsZero() && fresh2.DeletionTimestamp.IsZero()
 			}, timeout, interval).Should(gomega.BeTrue())
+		})
+	})
+
+	ginkgo.When("A JobSet with container ports and DNS hostnames is created", func() {
+		var ns *corev1.Namespace
+		wantPorts := []corev1.ServicePort{
+			{Name: "tcp-8080", Port: 8080, TargetPort: intstr.FromInt32(8080), Protocol: corev1.ProtocolTCP},
+		}
+
+		makeJS := func() *jobset.JobSet {
+			podSpec := *testing.TestPodSpec.DeepCopy()
+			podSpec.Containers[0].Ports = []corev1.ContainerPort{{ContainerPort: 8080}}
+			return testing.MakeJobSet("test-js", ns.Name).
+				SuccessPolicy(&jobset.SuccessPolicy{Operator: jobset.OperatorAll, TargetReplicatedJobs: []string{}}).
+				EnableDNSHostnames(true).
+				ReplicatedJob(testing.MakeReplicatedJob("replicated-job-a").
+					Job(testing.MakeJobTemplate("test-job-A", ns.Name).PodSpec(podSpec).Obj()).
+					Replicas(1).
+					Obj()).
+				Obj()
+		}
+
+		ginkgo.BeforeEach(func() {
+			ns = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "jobset-ns-"}}
+			gomega.Expect(k8sClient.Create(ctx, ns)).To(gomega.Succeed())
+		})
+		ginkgo.AfterEach(func() {
+			gomega.Expect(testutil.DeleteNamespace(ctx, k8sClient, ns)).To(gomega.Succeed())
+		})
+
+		ginkgo.It("creates the headless service with ports derived from container ports", func() {
+			js := makeJS()
+			gomega.Expect(k8sClient.Create(ctx, js)).To(gomega.Succeed())
+			gomega.Eventually(func(g gomega.Gomega) {
+				var svc corev1.Service
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: controllers.GetSubdomain(js), Namespace: ns.Name}, &svc)).To(gomega.Succeed())
+				g.Expect(svc.Spec.Ports).To(gomega.BeComparableTo(wantPorts))
+			}, timeout, interval).Should(gomega.Succeed())
+		})
+
+		ginkgo.It("reconciles ports on an existing owned headless service that lost them", func() {
+			js := makeJS()
+			gomega.Expect(k8sClient.Create(ctx, js)).To(gomega.Succeed())
+			subdomain := controllers.GetSubdomain(js)
+			key := types.NamespacedName{Name: subdomain, Namespace: ns.Name}
+
+			ginkgo.By("waiting for the headless service to be created with ports")
+			gomega.Eventually(func(g gomega.Gomega) {
+				var svc corev1.Service
+				g.Expect(k8sClient.Get(ctx, key, &svc)).To(gomega.Succeed())
+				g.Expect(svc.Spec.Ports).To(gomega.BeComparableTo(wantPorts))
+			}, timeout, interval).Should(gomega.Succeed())
+
+			ginkgo.By("clearing the ports to simulate a service created before port propagation")
+			gomega.Eventually(func(g gomega.Gomega) {
+				var svc corev1.Service
+				g.Expect(k8sClient.Get(ctx, key, &svc)).To(gomega.Succeed())
+				svc.Spec.Ports = nil
+				g.Expect(k8sClient.Update(ctx, &svc)).To(gomega.Succeed())
+			}, timeout, interval).Should(gomega.Succeed())
+
+			ginkgo.By("expecting the controller to re-add the ports")
+			gomega.Eventually(func(g gomega.Gomega) {
+				var svc corev1.Service
+				g.Expect(k8sClient.Get(ctx, key, &svc)).To(gomega.Succeed())
+				g.Expect(svc.Spec.Ports).To(gomega.BeComparableTo(wantPorts))
+			}, timeout, interval).Should(gomega.Succeed())
 		})
 	})
 
