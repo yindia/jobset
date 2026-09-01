@@ -22,7 +22,7 @@ import (
 	"github.com/onsi/gomega"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	schedulingv1alpha2 "k8s.io/api/scheduling/v1alpha2"
+	schedulingv1beta1 "k8s.io/api/scheduling/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -72,22 +72,22 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 			totalPods := replicas * completions // 4
 
 			ginkgo.By("creating the Workload")
-			workload := &schedulingv1alpha2.Workload{
+			workload := &schedulingv1beta1.Workload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      workloadName,
 					Namespace: ns.Name,
 				},
-				Spec: schedulingv1alpha2.WorkloadSpec{
-					ControllerRef: &schedulingv1alpha2.TypedLocalObjectReference{
+				Spec: schedulingv1beta1.WorkloadSpec{
+					ControllerRef: &schedulingv1beta1.TypedLocalObjectReference{
 						APIGroup: jobset.GroupVersion.Group,
 						Kind:     "JobSet",
 						Name:     jsName,
 					},
-					PodGroupTemplates: []schedulingv1alpha2.PodGroupTemplate{
+					PodGroupTemplates: []schedulingv1beta1.PodGroupTemplate{
 						{
 							Name: pgTemplateName,
-							SchedulingPolicy: schedulingv1alpha2.PodGroupSchedulingPolicy{
-								Gang: &schedulingv1alpha2.GangSchedulingPolicy{
+							SchedulingPolicy: schedulingv1beta1.PodGroupSchedulingPolicy{
+								Gang: &schedulingv1beta1.GangSchedulingPolicy{
 									MinCount: totalPods,
 								},
 							},
@@ -98,20 +98,18 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 			gomega.Expect(k8sClient.Create(ctx, workload)).To(gomega.Succeed())
 
 			ginkgo.By("creating the PodGroup")
-			pg := &schedulingv1alpha2.PodGroup{
+			pg := &schedulingv1beta1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pgName,
 					Namespace: ns.Name,
 				},
-				Spec: schedulingv1alpha2.PodGroupSpec{
-					PodGroupTemplateRef: &schedulingv1alpha2.PodGroupTemplateReference{
-						Workload: &schedulingv1alpha2.WorkloadPodGroupTemplateReference{
-							WorkloadName:         workloadName,
-							PodGroupTemplateName: pgTemplateName,
-						},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					WorkloadRef: &schedulingv1beta1.WorkloadReference{
+						WorkloadName: workloadName,
+						TemplateName: pgTemplateName,
 					},
-					SchedulingPolicy: schedulingv1alpha2.PodGroupSchedulingPolicy{
-						Gang: &schedulingv1alpha2.GangSchedulingPolicy{
+					SchedulingPolicy: schedulingv1beta1.PodGroupSchedulingPolicy{
+						Gang: &schedulingv1beta1.GangSchedulingPolicy{
 							MinCount: totalPods,
 						},
 					},
@@ -142,7 +140,7 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 
 			ginkgo.By("verifying the Workload exists")
 			gomega.Eventually(func(g gomega.Gomega) {
-				var wl schedulingv1alpha2.Workload
+				var wl schedulingv1beta1.Workload
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
 					Name: workloadName, Namespace: ns.Name,
 				}, &wl)).To(gomega.Succeed())
@@ -152,7 +150,7 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 
 			ginkgo.By("verifying the PodGroup exists with gang policy")
 			gomega.Eventually(func(g gomega.Gomega) {
-				var podGroup schedulingv1alpha2.PodGroup
+				var podGroup schedulingv1beta1.PodGroup
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
 					Name: pgName, Namespace: ns.Name,
 				}, &podGroup)).To(gomega.Succeed())
@@ -179,22 +177,22 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 			totalPods := replicas * completions // 4
 
 			ginkgo.By("creating the Workload with gang policy")
-			workload := &schedulingv1alpha2.Workload{
+			workload := &schedulingv1beta1.Workload{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      workloadName,
 					Namespace: ns.Name,
 				},
-				Spec: schedulingv1alpha2.WorkloadSpec{
-					ControllerRef: &schedulingv1alpha2.TypedLocalObjectReference{
+				Spec: schedulingv1beta1.WorkloadSpec{
+					ControllerRef: &schedulingv1beta1.TypedLocalObjectReference{
 						APIGroup: jobset.GroupVersion.Group,
 						Kind:     "JobSet",
 						Name:     jsName,
 					},
-					PodGroupTemplates: []schedulingv1alpha2.PodGroupTemplate{
+					PodGroupTemplates: []schedulingv1beta1.PodGroupTemplate{
 						{
 							Name: pgTemplateName,
-							SchedulingPolicy: schedulingv1alpha2.PodGroupSchedulingPolicy{
-								Gang: &schedulingv1alpha2.GangSchedulingPolicy{
+							SchedulingPolicy: schedulingv1beta1.PodGroupSchedulingPolicy{
+								Gang: &schedulingv1beta1.GangSchedulingPolicy{
 									MinCount: totalPods,
 								},
 							},
@@ -205,25 +203,23 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 			gomega.Expect(k8sClient.Create(ctx, workload)).To(gomega.Succeed())
 
 			ginkgo.By("creating the PodGroup with topology constraints")
-			pg := &schedulingv1alpha2.PodGroup{
+			pg := &schedulingv1beta1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pgName,
 					Namespace: ns.Name,
 				},
-				Spec: schedulingv1alpha2.PodGroupSpec{
-					PodGroupTemplateRef: &schedulingv1alpha2.PodGroupTemplateReference{
-						Workload: &schedulingv1alpha2.WorkloadPodGroupTemplateReference{
-							WorkloadName:         workloadName,
-							PodGroupTemplateName: pgTemplateName,
-						},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					WorkloadRef: &schedulingv1beta1.WorkloadReference{
+						WorkloadName: workloadName,
+						TemplateName: pgTemplateName,
 					},
-					SchedulingPolicy: schedulingv1alpha2.PodGroupSchedulingPolicy{
-						Gang: &schedulingv1alpha2.GangSchedulingPolicy{
+					SchedulingPolicy: schedulingv1beta1.PodGroupSchedulingPolicy{
+						Gang: &schedulingv1beta1.GangSchedulingPolicy{
 							MinCount: totalPods,
 						},
 					},
-					SchedulingConstraints: &schedulingv1alpha2.PodGroupSchedulingConstraints{
-						Topology: []schedulingv1alpha2.TopologyConstraint{
+					SchedulingConstraints: &schedulingv1beta1.PodGroupSchedulingConstraints{
+						Topology: []schedulingv1beta1.TopologyConstraint{
 							{Key: "topology.kubernetes.io/rack"},
 						},
 					},
@@ -265,7 +261,7 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 			}, timeout, interval).Should(gomega.Succeed())
 
 			ginkgo.By("verifying PodGroup has topology constraints")
-			var podGroup schedulingv1alpha2.PodGroup
+			var podGroup schedulingv1beta1.PodGroup
 			gomega.Expect(k8sClient.Get(ctx, types.NamespacedName{
 				Name: pgName, Namespace: ns.Name,
 			}, &podGroup)).To(gomega.Succeed())
@@ -277,7 +273,6 @@ var _ = ginkgo.Describe("Workload-Aware Scheduling E2E", func() {
 			testutil.JobSetCompleted(ctx, k8sClient, js, timeout)
 		})
 	})
-
 })
 
 // makeJobSet creates a JobSet with a single ReplicatedJob. If podGroupName is
