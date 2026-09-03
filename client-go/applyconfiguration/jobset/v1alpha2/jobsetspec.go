@@ -51,7 +51,9 @@ type JobSetSpecApplyConfiguration struct {
 	// The built-in JobSet controller reconciles JobSets which don't have this
 	// field at all or the field value is the reserved string
 	// `jobset.sigs.k8s.io/jobset-controller`, but skips reconciling JobSets
-	// with a custom value for this field.
+	// with a custom value for this field. Note that ttlSecondsAfterFinished
+	// cleanup still applies to externally managed JobSets once the managing
+	// controller has recorded a terminal condition.
 	//
 	// The value must be a valid domain-prefixed path (e.g. acme.io/foo) -
 	// all characters before the first "/" must be a valid subdomain as defined
@@ -66,6 +68,9 @@ type JobSetSpecApplyConfiguration struct {
 	// guarantees (e.g. finalizers) will be honored. If this field is unset,
 	// the JobSet won't be automatically deleted. If this field is set to zero,
 	// the JobSet becomes eligible to be deleted immediately after it finishes.
+	// For JobSets that set managedBy to an external controller, TTL cleanup
+	// becomes eligible only after that controller records a terminal
+	// (Completed or Failed) condition.
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
 	// volumeClaimPolicies is a list of policies for persistent volume claims that pods are allowed
 	// to reference. JobSet controller automatically adds the required volume claims to the

@@ -146,6 +146,21 @@ func (r *JobSetReconciler) reconcile(ctx context.Context, js *jobset.JobSet, upd
 	// for why a JobSet would not be controlled by the default JobSet controller.
 	if manager := managedByExternalController(js); manager != nil {
 		log.V(5).Info("Skipping JobSet managed by a different controller", "managed-by", manager)
+		// The built-in controller does not manage child Jobs or status for externally
+		// managed JobSets. It still honors the TTL policy so that, once the external
+		// controller has written a terminal condition and the configured TTL expires,
+		// the JobSet CR is cleaned up. A JobSet without a TTL keeps the current
+		// behavior of being retained indefinitely.
+		if jobSetFinished(js) {
+			requeueAfter, err := executeTTLAfterFinishedPolicy(ctx, r.Client, r.clock, js)
+			if err != nil {
+				log.Error(err, "executing ttl after finished policy for externally managed jobset")
+				return ctrl.Result{}, err
+			}
+			if requeueAfter > 0 {
+				return ctrl.Result{RequeueAfter: requeueAfter}, nil
+			}
+		}
 		return ctrl.Result{}, nil
 	}
 
