@@ -378,7 +378,7 @@ type JobSetSpec struct {
 //     schedulingConstraints, disruptionMode, and/or resourceClaims to configure a single PodGroup
 //     (or, under sequenced startup, one PodGroup per ReplicatedJob) covering the
 //     whole JobSet, and leave replicatedJobs unset.
-//   - the per-ReplicatedJob (level 2 / leaf) model: set replicatedJobs and
+//   - the per-ReplicatedJob (level 2 / composite) model: set replicatedJobs and
 //     leave schedulingPolicy, schedulingConstraints, disruptionMode, and resourceClaims unset at
 //     the top level. Every ReplicatedJob must then be targeted by exactly one
 //     replicatedJobs entry, since there is no top-level policy for an
@@ -389,7 +389,7 @@ type JobSetScheduling struct {
     // schedulingPolicy is nil and replicatedJobs is not set.
     // Mutually exclusive with replicatedJobs: see the type-level comment.
     // +optional
-    SchedulingPolicy *schedulingv1alpha3.PodGroupSchedulingPolicy `json:"schedulingPolicy,omitempty"`
+    SchedulingPolicy *schedulingv1alpha3.WorkloadCompositePodGroupSchedulingPolicy `json:"schedulingPolicy,omitempty"`
 
     // schedulingConstraints defines composite-level (level 1) topology constraints
     // for the entire JobSet.
@@ -410,7 +410,7 @@ type JobSetScheduling struct {
     // +kubebuilder:validation:MaxItems=4
     ResourceClaims []schedulingv1alpha3.PodGroupResourceClaim `json:"resourceClaims,omitempty"`
 
-    // replicatedJobs specifies per-ReplicatedJob leaf-level (level 2)
+    // replicatedJobs specifies per-ReplicatedJob composite-level (level 2)
     // scheduling overrides. Mutually exclusive with the top-level schedulingPolicy,
     // schedulingConstraints, disruptionMode, and resourceClaims fields: see the type-level comment.
     // When set, every ReplicatedJob in the JobSet must be targeted by exactly one
@@ -422,7 +422,7 @@ type JobSetScheduling struct {
 }
 
 // ReplicatedJobScheduling targets one or more named ReplicatedJobs with
-// level 2 (leaf-level) scheduling configuration.
+// level 2 (composite-level) scheduling configuration.
 type ReplicatedJobScheduling struct {
     // targetReplicatedJobs is the list of ReplicatedJob names this policy applies to.
     // When more than one name is listed, the targeted ReplicatedJobs share a single
@@ -434,13 +434,13 @@ type ReplicatedJobScheduling struct {
     // +kubebuilder:validation:items:MaxLength=256
     TargetReplicatedJobs []string `json:"targetReplicatedJobs,omitempty"`
 
-    // schedulingPolicy defines the leaf-level (level 2) scheduling policy (basic or
+    // schedulingPolicy defines the composite-level (level 2) scheduling policy (basic or
     // gang) for jobs created by the targeted ReplicatedJobs. Defaults to Gang when
     // not specified.
     // +optional
-    SchedulingPolicy *schedulingv1alpha3.PodGroupSchedulingPolicy `json:"schedulingPolicy,omitempty"`
+    SchedulingPolicy *schedulingv1alpha3.WorkloadCompositePodGroupSchedulingPolicy `json:"schedulingPolicy,omitempty"`
 
-    // schedulingConstraints defines leaf-level (level 2) topology constraints for
+    // schedulingConstraints defines composite-level (level 2) topology constraints for
     // the targeted ReplicatedJobs' pods.
     // +optional
     SchedulingConstraints *schedulingv1alpha3.PodGroupSchedulingConstraints `json:"schedulingConstraints,omitempty"`
@@ -461,7 +461,7 @@ type ReplicatedJobScheduling struct {
     // own independent gang (i.e. one PodGroup per Job) instead of sharing a single
     // PodGroup across every replica. This is part of the Gang-of-Gangs model. When
     // set, targetReplicatedJobs must contain exactly one ReplicatedJob name, and the
-    // leaf-level schedulingPolicy/schedulingConstraints/disruptionMode/resourceClaims
+    // composite-level schedulingPolicy/schedulingConstraints/disruptionMode/resourceClaims
     // fields on this ReplicatedJobScheduling must not be set, since they
     // configure a shared PodGroup that the job field replaces with one
     // PodGroup per Job.
@@ -477,7 +477,7 @@ type ReplicatedJobScheduling struct {
 // ReplicatedJob's replicas.
 type JobScheduling struct {
     // +optional
-    SchedulingPolicy *schedulingv1alpha3.PodGroupSchedulingPolicy `json:"schedulingPolicy,omitempty"`
+    SchedulingPolicy *schedulingv1alpha3.WorkloadPodGroupSchedulingPolicy `json:"schedulingPolicy,omitempty"`
     // +optional
     SchedulingConstraints *schedulingv1alpha3.PodGroupSchedulingConstraints `json:"schedulingConstraints,omitempty"`
     // +optional
