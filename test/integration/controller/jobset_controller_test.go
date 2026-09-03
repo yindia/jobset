@@ -30,6 +30,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -48,8 +49,9 @@ import (
 )
 
 const (
-	timeout  = 10 * time.Second
-	interval = time.Millisecond * 250
+	timeout      = 10 * time.Second
+	shortTimeout = 2 * time.Second
+	interval     = time.Millisecond * 250
 )
 
 var _ = ginkgo.Describe("JobSet validation", func() {
@@ -3301,6 +3303,70 @@ var _ = ginkgo.Describe("JobSet controller", func() {
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(js), updatedJs)).To(gomega.Succeed())
 				g.Expect(updatedJs.Status).To(gomega.BeComparableTo(wantStatus, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")))
 			}, timeout, interval).Should(gomega.Succeed())
+		})
+	})
+
+	ginkgo.When("A JobSet managed by another controller has TTLSecondsAfterFinished configured", func() {
+		var ns *corev1.Namespace
+
+		ginkgo.BeforeEach(func() {
+			ns = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "jobset-ns-"}}
+			gomega.Expect(k8sClient.Create(ctx, ns)).To(gomega.Succeed())
+		})
+		ginkgo.AfterEach(func() {
+			gomega.Expect(testutil.DeleteNamespace(ctx, k8sClient, ns)).To(gomega.Succeed())
+		})
+
+		// markExternallyCompleted simulates the external controller writing a terminal
+		// condition, since the built-in controller does not manage status for these JobSets.
+		markExternallyCompleted := func(js *jobset.JobSet) {
+			gomega.Eventually(func(g gomega.Gomega) {
+				fresh := &jobset.JobSet{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(js), fresh)).To(gomega.Succeed())
+				fresh.Status.Conditions = []metav1.Condition{{
+					Type:               string(jobset.JobSetCompleted),
+					Status:             metav1.ConditionTrue,
+					Reason:             "ByTest",
+					Message:            "completed by external controller",
+					LastTransitionTime: metav1.Now(),
+				}}
+				g.Expect(k8sClient.Status().Update(ctx, fresh)).To(gomega.Succeed())
+			}, timeout, interval).Should(gomega.Succeed())
+		}
+
+		ginkgo.It("should delete the JobSet after the ttl expires once the external controller marks it terminal", func() {
+			js := testJobSet(ns).ManagedBy("other-controller").TTLSecondsAfterFinished(2).Obj()
+			gomega.Expect(k8sClient.Create(ctx, js)).To(gomega.Succeed())
+
+			ginkgo.By("verifying the built-in controller creates no child jobs for it")
+			gomega.Consistently(func(g gomega.Gomega) {
+				var jobList batchv1.JobList
+				g.Expect(k8sClient.List(ctx, &jobList, client.InNamespace(ns.Name))).To(gomega.Succeed())
+				g.Expect(jobList.Items).To(gomega.BeEmpty())
+			}, shortTimeout, interval).Should(gomega.Succeed())
+
+			markExternallyCompleted(js)
+
+			ginkgo.By("expecting the JobSet to be deleted after the ttl passes")
+			gomega.Eventually(func() bool {
+				var fresh jobset.JobSet
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(js), &fresh)
+				return apierrors.IsNotFound(err) || (err == nil && !fresh.DeletionTimestamp.IsZero())
+			}, timeout, interval).Should(gomega.BeTrue())
+		})
+
+		ginkgo.It("should retain a terminal JobSet that has no ttl configured", func() {
+			js := testJobSet(ns).ManagedBy("other-controller").Obj()
+			gomega.Expect(k8sClient.Create(ctx, js)).To(gomega.Succeed())
+
+			markExternallyCompleted(js)
+
+			ginkgo.By("verifying the JobSet is retained")
+			gomega.Consistently(func(g gomega.Gomega) {
+				var fresh jobset.JobSet
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(js), &fresh)).To(gomega.Succeed())
+				g.Expect(fresh.DeletionTimestamp.IsZero()).To(gomega.BeTrue())
+			}, shortTimeout, interval).Should(gomega.Succeed())
 		})
 	})
 

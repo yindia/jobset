@@ -366,7 +366,9 @@ jobset.sigs.k8s.io/coordinator=<!-- raw HTML omitted -->.<!-- raw HTML omitted -
 The built-in JobSet controller reconciles JobSets which don't have this
 field at all or the field value is the reserved string
 <code>jobset.sigs.k8s.io/jobset-controller</code>, but skips reconciling JobSets
-with a custom value for this field.</p>
+with a custom value for this field. Note that ttlSecondsAfterFinished
+cleanup still applies to externally managed JobSets once the managing
+controller has recorded a terminal condition.</p>
 <p>The value must be a valid domain-prefixed path (e.g. acme.io/foo) -
 all characters before the first &quot;/&quot; must be a valid subdomain as defined
 by RFC 1123. All characters trailing the first &quot;/&quot; must be valid HTTP Path
@@ -384,7 +386,10 @@ TTLSecondsAfterFinished after the JobSet finishes, it is eligible to be
 automatically deleted. When the JobSet is being deleted, its lifecycle
 guarantees (e.g. finalizers) will be honored. If this field is unset,
 the JobSet won't be automatically deleted. If this field is set to zero,
-the JobSet becomes eligible to be deleted immediately after it finishes.</p>
+the JobSet becomes eligible to be deleted immediately after it finishes.
+For JobSets that set managedBy to an external controller, TTL cleanup
+becomes eligible only after that controller records a terminal
+(Completed or Failed) condition.</p>
 </td>
 </tr>
 <tr><td><code>volumeClaimPolicies</code><br/>

@@ -396,14 +396,14 @@ func schema_jobset_api_jobset_v1alpha2_JobSetSpec(ref common.ReferenceCallback) 
 					},
 					"managedBy": {
 						SchemaProps: spec.SchemaProps{
-							Description: "managedBy is used to indicate the controller or entity that manages a JobSet. The built-in JobSet controller reconciles JobSets which don't have this field at all or the field value is the reserved string `jobset.sigs.k8s.io/jobset-controller`, but skips reconciling JobSets with a custom value for this field.\n\nThe value must be a valid domain-prefixed path (e.g. acme.io/foo) - all characters before the first \"/\" must be a valid subdomain as defined by RFC 1123. All characters trailing the first \"/\" must be valid HTTP Path characters as defined by RFC 3986. The value cannot exceed 63 characters. The field is immutable.",
+							Description: "managedBy is used to indicate the controller or entity that manages a JobSet. The built-in JobSet controller reconciles JobSets which don't have this field at all or the field value is the reserved string `jobset.sigs.k8s.io/jobset-controller`, but skips reconciling JobSets with a custom value for this field. Note that ttlSecondsAfterFinished cleanup still applies to externally managed JobSets once the managing controller has recorded a terminal condition.\n\nThe value must be a valid domain-prefixed path (e.g. acme.io/foo) - all characters before the first \"/\" must be a valid subdomain as defined by RFC 1123. All characters trailing the first \"/\" must be valid HTTP Path characters as defined by RFC 3986. The value cannot exceed 63 characters. The field is immutable.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"ttlSecondsAfterFinished": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ttlSecondsAfterFinished limits the lifetime of a JobSet that has finished execution (either Complete or Failed). If this field is set, TTLSecondsAfterFinished after the JobSet finishes, it is eligible to be automatically deleted. When the JobSet is being deleted, its lifecycle guarantees (e.g. finalizers) will be honored. If this field is unset, the JobSet won't be automatically deleted. If this field is set to zero, the JobSet becomes eligible to be deleted immediately after it finishes.",
+							Description: "ttlSecondsAfterFinished limits the lifetime of a JobSet that has finished execution (either Complete or Failed). If this field is set, TTLSecondsAfterFinished after the JobSet finishes, it is eligible to be automatically deleted. When the JobSet is being deleted, its lifecycle guarantees (e.g. finalizers) will be honored. If this field is unset, the JobSet won't be automatically deleted. If this field is set to zero, the JobSet becomes eligible to be deleted immediately after it finishes. For JobSets that set managedBy to an external controller, TTL cleanup becomes eligible only after that controller records a terminal (Completed or Failed) condition.",
 							Type:        []string{"integer"},
 							Format:      "int32",
 						},
