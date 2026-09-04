@@ -19,6 +19,7 @@ package webhooks
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -122,6 +123,118 @@ func TestDefault(t *testing.T) {
 				},
 				Spec: corev1.PodSpec{
 					Priority: ptr.To(int32(100)),
+				},
+			},
+		},
+		{
+			name: "jobset pod, negative priority",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(-1)),
+				},
+			},
+			wantPod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+					Labels: map[string]string{
+						"jobset.sigs.k8s.io/priority": "n1",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(-1)),
+				},
+			},
+		},
+		{
+			name: "jobset pod, large negative priority",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(-1000)),
+				},
+			},
+			wantPod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+					Labels: map[string]string{
+						"jobset.sigs.k8s.io/priority": "n1000",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(-1000)),
+				},
+			},
+		},
+		{
+			name: "jobset pod, most negative int32 priority",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(math.MinInt32)),
+				},
+			},
+			wantPod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+					Labels: map[string]string{
+						"jobset.sigs.k8s.io/priority": "n2147483648",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(math.MinInt32)),
+				},
+			},
+		},
+		{
+			name: "jobset pod, zero priority",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(0)),
+				},
+			},
+			wantPod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "p",
+					Annotations: map[string]string{
+						"jobset.sigs.k8s.io/jobset-name": "js",
+					},
+					Labels: map[string]string{
+						"jobset.sigs.k8s.io/priority": "0",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Priority: ptr.To(int32(0)),
 				},
 			},
 		},
