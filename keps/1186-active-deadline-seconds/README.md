@@ -130,6 +130,18 @@ Notes).
   on suspend, and reset on resume, regardless of whether `activeDeadlineSeconds`
   is set. Ecosystem tools (CLI printers, dashboards) can rely on it as the
   JobSet's active-start time.
+- **Externally managed JobSets (`spec.managedBy`).** When `managedBy` names a
+  controller other than the built-in `jobset.sigs.k8s.io/jobset-controller`, the
+  built-in controller skips reconciliation entirely (it only runs
+  `ttlSecondsAfterFinished` cleanup once a terminal condition exists, matching
+  existing behavior). Both `.status.startTime` maintenance and the
+  `activeDeadlineSeconds` check run *after* that `managedByExternalController`
+  early-return in `Reconcile`, so the built-in controller neither sets
+  `startTime` nor enforces the deadline for an externally managed JobSet. The
+  managing controller (e.g. MultiKueue) owns `startTime` and deadline
+  enforcement, exactly as it already owns child-Job and status management. This
+  falls out of the existing skip; no extra gating code is added. An integration
+  test validates this assumption (see [Integration tests](#integration-tests)).
 
 ### Risks and Mitigations
 
@@ -330,7 +342,10 @@ policy, so an expired JobSet fails with `DeadlineExceeded` rather than being
 restarted by the failure policy (which would reset `startTime` via
 `RestartJobSet` or return early via `RestartJob`, bypassing the deadline).
 Because `jobSetFinished` short-circuits at the top of the loop, an
-already-finished JobSet is never re-failed by the deadline.
+already-finished JobSet is never re-failed by the deadline. All of this sits
+below the `managedByExternalController` early-return, so for an externally
+managed JobSet neither `startTime` maintenance nor the deadline check runs (see
+[Notes/Constraints/Caveats](#notesconstraintscaveats)).
 
 **`startTime` maintenance** is general and not gated by `activeDeadlineSeconds`
 or the feature gate: `.status.startTime` tracks the JobSet's active-start time
@@ -486,6 +501,12 @@ Added under `test/integration/` (envtest):
   per-attempt deadline, unbounded by `maxRestarts`).
 - Feature gate off: `activeDeadlineSeconds` is never enforced; enabling the gate
   on an already-running JobSet begins enforcement from that point.
+- Externally managed JobSet (`managedBy` set to a non-built-in controller):
+  validates the assumption that the built-in controller skips this feature for
+  externally managed JobSets. With the gate on and the deadline elapsed, the
+  built-in controller neither sets `.status.startTime` nor fails the JobSet,
+  confirming the behavior falls out of the existing `managedBy` skip with no
+  extra gating code.
 
 ### Graduation Criteria
 
@@ -510,6 +531,8 @@ Added under `test/integration/` (envtest):
 ## Implementation History
 
 - 2026-08-26: KEP drafted (provisional) from issue #1186 discussion.
+- 2026-09-05: Documented the activeDeadlineSeconds interaction with managedBy
+  (follow-up to the #1306 KEP review).
 
 ## Drawbacks
 
