@@ -533,6 +533,9 @@ Added under `test/integration/` (envtest):
 - 2026-08-26: KEP drafted (provisional) from issue #1186 discussion.
 - 2026-09-05: Documented the activeDeadlineSeconds interaction with managedBy
   (follow-up to the #1306 KEP review).
+- 2026-09-05: Alpha implementation (API field, `.status.startTime`, feature gate
+  `JobSetActiveDeadlineSeconds`, controller enforcement, metric, unit and
+  integration tests).
 
 ## Drawbacks
 

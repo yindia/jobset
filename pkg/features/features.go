@@ -59,6 +59,14 @@ const (
 	//
 	// Enables tracking and propagating JobSet execution attempts as a monotonic counter.
 	ExecutionAttemptsTracking featuregate.Feature = "ExecutionAttemptsTracking"
+
+	// owner: @yindia
+	// kep: https://github.com/kubernetes-sigs/jobset/blob/main/keps/1186-active-deadline-seconds/README.md
+	//
+	// Enables enforcement of the JobSet-level spec.activeDeadlineSeconds, which bounds the
+	// continuous active runtime of a JobSet before the controller marks it Failed and deletes
+	// its active Jobs. The .status.startTime field is maintained regardless of this gate.
+	JobSetActiveDeadlineSeconds featuregate.Feature = "JobSetActiveDeadlineSeconds"
 )
 
 func init() {
@@ -81,6 +89,8 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	ElasticJobSet: {Default: false, PreRelease: featuregate.Alpha},
 
 	ExecutionAttemptsTracking: {Default: false, PreRelease: featuregate.Alpha},
+
+	JobSetActiveDeadlineSeconds: {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func SetFeatureGateDuringTest(tb testing.TB, f featuregate.Feature, value bool) {
