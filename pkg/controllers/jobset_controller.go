@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/utils/clock"
 
@@ -204,19 +205,70 @@ func (r *JobSetReconciler) reconcile(ctx context.Context, js *jobset.JobSet, upd
 		setRestartingConditionFalse(js, constants.RestartingJobSetReasonJobsReady, constants.RestartingJobSetReasonJobsReadyMessage, updateStatusOpts)
 	}
 
-	// If any jobs have failed, execute the JobSet failure policy (if any).
-	if len(ownedJobs.failed) > 0 {
-		if err := executeFailurePolicy(ctx, js, ownedJobs, updateStatusOpts); err != nil {
-			log.Error(err, "executing failure policy")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+	// Maintain .status.startTime (the JobSet active-start time and the anchor for
+	// spec.activeDeadlineSeconds) only while the feature gate is on, so a JobSet
+	// carries no active-deadline status side effects when disabled.
+	activeDeadlineGateEnabled := features.Enabled(features.JobSetActiveDeadlineSeconds)
+	if activeDeadlineGateEnabled {
+		r.syncActiveDeadlineStartTime(js, updateStatusOpts)
 	}
 
-	// If any jobs have succeeded, execute the JobSet success policy.
-	if len(ownedJobs.successful) > 0 {
-		if completed := executeSuccessPolicy(js, ownedJobs, updateStatusOpts); completed {
+	// deadlineRequeueAfter wakes the controller exactly at the active deadline.
+	// It stays 0 (no extra requeue) unless the feature is enabled and armed.
+	var deadlineRequeueAfter time.Duration
+
+	// The success -> deadline -> failure ordering applies only to JobSets that opt in
+	// via spec.activeDeadlineSeconds while the gate is on. Every other JobSet keeps the
+	// original failure -> success ordering, so enabling the cluster-wide gate never
+	// changes the terminal outcome of a JobSet that does not use the feature.
+	if activeDeadlineGateEnabled && js.Spec.ActiveDeadlineSeconds != nil {
+		// Success runs first so a completed JobSet always wins; the deadline runs
+		// before the failure policy so an expired JobSet fails with DeadlineExceeded
+		// instead of being restarted (which would reset or bypass the deadline).
+		if len(ownedJobs.successful) > 0 {
+			if completed := executeSuccessPolicy(js, ownedJobs, updateStatusOpts); completed {
+				return ctrl.Result{}, nil
+			}
+		}
+
+		expired, requeueAfter, err := r.executeActiveDeadlinePolicy(ctx, js, ownedJobs, updateStatusOpts)
+		if err != nil {
+			log.Error(err, "executing active deadline policy")
+			return ctrl.Result{}, err
+		}
+		if expired {
 			return ctrl.Result{}, nil
+		}
+		deadlineRequeueAfter = requeueAfter
+
+		if len(ownedJobs.failed) > 0 {
+			restartsBefore := js.Status.Restarts
+			if err := executeFailurePolicy(ctx, js, ownedJobs, updateStatusOpts); err != nil {
+				log.Error(err, "executing failure policy")
+				return ctrl.Result{}, err
+			}
+			// A global restart (Status.Restarts bumped) begins a fresh run, so reset
+			// the active-deadline timer using the injectable clock.
+			r.resetStartTimeOnGlobalRestart(js, restartsBefore, updateStatusOpts)
+			return ctrl.Result{}, nil
+		}
+	} else {
+		// Original failure -> success ordering, unchanged from before the feature.
+		if len(ownedJobs.failed) > 0 {
+			restartsBefore := js.Status.Restarts
+			if err := executeFailurePolicy(ctx, js, ownedJobs, updateStatusOpts); err != nil {
+				log.Error(err, "executing failure policy")
+				return ctrl.Result{}, err
+			}
+			// Keep startTime consistent across global restarts for JobSets without a
+			// deadline. Self-gated: a no-op while the feature gate is off.
+			r.resetStartTimeOnGlobalRestart(js, restartsBefore, updateStatusOpts)
+			return ctrl.Result{}, nil
+		}
+		if len(ownedJobs.successful) > 0 {
+			if completed := executeSuccessPolicy(js, ownedJobs, updateStatusOpts); completed {
+				return ctrl.Result{}, nil
+			}
 		}
 	}
 
@@ -285,7 +337,10 @@ func (r *JobSetReconciler) reconcile(ctx context.Context, js *jobset.JobSet, upd
 		}
 	}
 
-	return ctrl.Result{}, nil
+	// Requeue at the active deadline so a wedged JobSet (which produces no child
+	// events) is still failed at expiry. deadlineRequeueAfter is 0 when the deadline
+	// is unset, disabled, or the JobSet is suspended, which leaves behavior unchanged.
+	return ctrl.Result{RequeueAfter: deadlineRequeueAfter}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
