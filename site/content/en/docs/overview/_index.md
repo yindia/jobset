@@ -74,6 +74,10 @@ See our github project for our [roadmap](https://github.com/orgs/kubernetes-sigs
 See the [troubleshooting](https://jobset.sigs.k8s.io/docs/troubleshooting/) guide for help resolving common issues.
 
 
+## Related projects
+
+- [k8s-CronJobSet](https://github.com/Rx-11/k8s-CronJobSet): a community project that runs JobSets on a cron schedule, similar to how a Kubernetes CronJob runs Jobs. Useful if you want to schedule recurring JobSet workloads such as periodic backups or batch jobs.
+
 ## Community, Discussion, Contribution, and Support
 
 Learn how to engage with the Kubernetes community on the [community page](http://kubernetes.io/community/).
